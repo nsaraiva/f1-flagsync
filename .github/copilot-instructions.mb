@@ -1,0 +1,140 @@
+---
+applyTo: "**"
+---
+
+# Copilot Instructions - f1-flagsync
+
+## Contexto do projeto
+
+Este projeto sincroniza o estado de bandeira de uma corrida de Formula 1 com uma fita de LED.
+
+Fluxo principal:
+1. Consultar uma API de Formula 1 para descobrir a bandeira atual da corrida.
+2. Traduzir a bandeira para uma cor/efeito de LED.
+3. Enviar o comando para a fita de LED conectada via Bluetooth.
+
+Estado atual:
+- Aplicacao em Rust.
+- Comunicacao BLE usando `btleplug`.
+
+Direcao futura:
+- Migrar/portar a logica para rodar em placa com microcontrolador ESP32-C6.
+
+## Como atuar como pair programmer neste repo
+
+Quando ajudar neste projeto, priorize:
+- Codigo simples, legivel e modular.
+- Evolucao incremental (passos pequenos e testaveis).
+- Confiabilidade em tempo real (mudanca rapida da cor ao mudar a bandeira).
+- Tratamento de erros explicito (`Result`, contexto com `anyhow`).
+
+## Contexto de aprendizado (importante)
+
+O mantenedor deste projeto esta aprendendo Rust.
+
+Por isso, toda assistencia deve ser didatica e incluir:
+- o que esta sendo feito,
+- por que esta sendo feito,
+- quais alternativas existem e por que a escolhida foi adotada,
+- alertas de armadilhas comuns em Rust (ownership, borrowing, lifetimes, async, erros).
+
+Ao sugerir codigo Rust:
+- explicar conceitos antes ou junto da mudanca,
+- preferir solucoes idiomaticas e simples,
+- evitar "magica" sem contextualizacao,
+- quando possivel, mostrar exemplos pequenos para fixacao.
+
+## Arquitetura preferida
+
+Separe o codigo em modulos com responsabilidades claras:
+- `f1_client`: busca e parse do estado da corrida na API.
+- `flag_state`: modelo de dominio da bandeira (enum) e regras de transicao.
+- `led_protocol`: mapeamento de bandeira para payload BLE (RGB/efeitos).
+- `ble_device`: descoberta, conexao e escrita de caracteristicas BLE.
+- `app_loop`: loop principal de sincronizacao (polling, debounce, retry).
+
+Evite concentrar toda a logica em `main.rs`.
+
+## Regras de implementacao
+
+- Nao quebrar o comportamento existente sem necessidade.
+- Toda interacao de rede/BLE deve ter timeout.
+- Sempre logar eventos importantes:
+	- bandeira recebida da API,
+	- decisao de cor/efeito,
+	- envio BLE e falhas.
+- Em caso de erro temporario (rede/BLE), usar retry com backoff.
+- Evitar busy loop; usar intervalo de polling configuravel.
+- Qualquer refatoracao deve incluir conferencia de impacto no restante do codigo.
+- Se a refatoracao afetar contratos, tipos, nomes ou fluxo, atualizar imediatamente todas as partes impactadas.
+
+## Contratos de dominio (sugestao)
+
+Padrao de enum para bandeiras (ajustar conforme API real):
+- `Green`
+- `Yellow`
+- `Red`
+- `SafetyCar`
+- `VirtualSafetyCar`
+- `Blue`
+- `Black`
+- `Checkered`
+- `Unknown`
+
+Mapeamento inicial sugerido para LED:
+- Green -> RGB(0, 255, 0)
+- Yellow -> RGB(255, 180, 0)
+- Red -> RGB(255, 0, 0)
+- SafetyCar / VirtualSafetyCar -> RGB(255, 255, 0) com efeito pulsante
+- Blue -> RGB(0, 80, 255)
+- Black -> RGB(0, 0, 0) ou brilho minimo
+- Checkered -> efeito alternado (branco/preto)
+- Unknown -> manter ultimo estado valido ou fallback seguro
+
+## Configuracao e parametros
+
+Sempre preferir configuracao externa (env vars/arquivo) para:
+- URL da API de F1.
+- Intervalo de polling.
+- Nome/endereco BLE alvo.
+- UUIDs de service/characteristic.
+- Timeouts e limites de retry.
+
+Nao hardcodar valores sensiveis ou de ambiente.
+
+## Qualidade e testes
+
+Ao sugerir mudancas, incluir quando possivel:
+- testes unitarios para parse e mapeamento de bandeira -> cor,
+- teste de resiliencia para falhas de API,
+- mocks/fakes para camada BLE quando aplicavel.
+
+Regra obrigatoria de qualidade:
+- Cada feature nova deve vir com teste(s).
+- Em cada refatoracao, revisar os testes existentes e ajustar/criar testes quando necessario.
+- Ao concluir mudancas, executar a suite de testes do projeto e garantir que tudo passe antes de encerrar a tarefa.
+
+Preferir funcoes puras no dominio para facilitar testes.
+
+## Prontas para ESP32-C6 (futuro)
+
+Pensar desde ja em portabilidade:
+- isolar logica de negocio de detalhes de plataforma,
+- evitar acoplamento forte com APIs especificas de desktop Linux,
+- manter interfaces para substituir transporte BLE e runtime,
+- considerar limites de memoria e processamento do microcontrolador.
+
+Quando iniciar o port para ESP32-C6, priorizar:
+1. Reaproveitar dominio (`flag_state`, mapeamento de LED).
+2. Trocar apenas adaptadores de IO (rede/BLE/timers).
+3. Garantir mesmo comportamento funcional.
+
+## Estilo de colaboracao
+
+Em cada tarefa, a assistencia deve:
+1. Explicar rapidamente o plano.
+2. Implementar o menor incremento util.
+3. Validar com `cargo check` e/ou testes.
+4. Sugerir proximo passo objetivo.
+
+Evitar respostas genericas; sempre contextualizar para este projeto de sincronizacao de bandeiras F1 com LED.
