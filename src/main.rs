@@ -18,13 +18,21 @@ async fn main() -> Result<()> {
         .next()
         .ok_or_else(|| anyhow!("No Bluetooth adapters found"))?;
 
-    let devices_with_props = scan_devices(&central).await?;
-    let selected_index = read_device_selection(devices_with_props.len())?;
+    let (device, device_name) = loop {
+        let devices_with_props = scan_devices(&central).await?;
 
-    let (device, device_name) = devices_with_props
-        .into_iter()
-        .nth(selected_index)
-        .ok_or_else(|| anyhow!("Index out of range"))?;
+        match read_device_selection(devices_with_props.len())? {
+            DeviceSelection::Rescan => continue,
+            DeviceSelection::Device(selected_index) => {
+                let selected = devices_with_props
+                    .into_iter()
+                    .nth(selected_index)
+                    .ok_or_else(|| anyhow!("Index out of range"))?;
+
+                break selected;
+            }
+        }
+    };
 
     println!("\nConnecting to: {device_name}");
     device.connect().await?;
@@ -63,8 +71,8 @@ async fn scan_devices(central: &Adapter) -> Result<Vec<(Peripheral, String)>> {
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "N/A".to_string());
 
-            // Use displayed index based only on selectable devices.
-            let display_index = devices_with_props.len();
+            // Display starts at 1, reserving 0 for rescanning.
+            let display_index = devices_with_props.len() + 1;
             println!(
                 "[{}] Device: {}, Address: {}, RSSI: {}",
                 display_index, name, addr, rssi
@@ -78,11 +86,18 @@ async fn scan_devices(central: &Adapter) -> Result<Vec<(Peripheral, String)>> {
         return Err(anyhow!("No devices with readable properties were found"));
     }
 
+    println!("[0] Scan novamente");
+
     Ok(devices_with_props)
 }
 
-fn read_device_selection(device_count: usize) -> Result<usize> {
-    print!("\nSelect a device by index: ");
+enum DeviceSelection {
+    Rescan,
+    Device(usize),
+}
+
+fn read_device_selection(device_count: usize) -> Result<DeviceSelection> {
+    print!("\nSelecione um dispositivo pelo indice (0 para scan novamente): ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -90,11 +105,15 @@ fn read_device_selection(device_count: usize) -> Result<usize> {
 
     let selected_index: usize = input.trim().parse().map_err(|_| anyhow!("Invalid index"))?;
 
-    if selected_index >= device_count {
+    if selected_index == 0 {
+        return Ok(DeviceSelection::Rescan);
+    }
+
+    if selected_index > device_count {
         return Err(anyhow!("Index out of range"));
     }
 
-    Ok(selected_index)
+    Ok(DeviceSelection::Device(selected_index - 1))
 }
 
 fn print_services_and_characteristics(device: &Peripheral) {
